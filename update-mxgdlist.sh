@@ -39,31 +39,36 @@ if ! ipset list -n|command grep -q "$IPSET_MXGD_NAME"; then
   fi
 fi
 
-# TODO: IPTABLES rule needs to be for a specific port or port range??
-
-# does not have the needed ipset INPUT rule, add it using:"
-#     echo >&2 "# iptables -I INPUT ${IPTABLES_IPSET_RULE_NUMBER:-1} -m set --match-set $IPSET_MXGD_NAME src -j DROP"
-#     exit 1
-#   fi
-#   if ! iptables -I INPUT "${IPTABLES_IPSET_RULE_NUMBER:-1}" -m set --match-set "$IPSET_MXGD_NAME" src -j DROP; then
-#     echo >&2 "Error: while adding the --match-set ipset rule to iptables"
-#     exit 1
-#   fi
-# fi
+if ! iptables -nvL INPUT|command grep -q "match-set $IPSET_MXGD_NAME"; then
+  # we may also have assumed that INPUT rule n°1 is about packets statistics (traffic monitoring)
+  if [[ ${FORCE:-no} != yes ]]; then
+    echo >&2 "Error: iptables does not have the needed ipset INPUT rule, add it using:"
+    echo >&2 "# iptables -A INPUT -m set --match-set $IPSET_MXGD_NAME src -p tcp --dport $IPTABLES_RULE_PORT -j ACCEPT"
+    exit 1
+  fi
+  if ! iptables -A INPUT  -m set --match-set "$IPSET_MXGD_NAME" src -p tcp --dport $IPTABLES_RULE_PORT -j ACCEPT; then
+    echo >&2 "Error: while adding the --match-set ipset rule to iptables"
+    exit 1
+  fi
+fi
 
 IP_MXGD_TMP=$(mktemp)
-for i in "${DNSRECORDS[@]}"
-do
-  IP_TMP=$(mktemp)
-  dig +short $DNSRECORD >$IP_TMP
-  # TODO: check error from dig
-  command grep -Po '^(?:\d{1,3}.){3}\d{1,3}(?:/\d{1,2})?' "$IP_TMP" | sed -r 's/^0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)$/\1.\2.\3.\4/' >> "$IP_MXGD_TMP"
-  rm -f "$IP_TMP"
-done
+IP_TMP=$(mktemp)
+dig +short $DNSRECORD >$IP_TMP
+
+# TODO: check error from dig
+command grep -Po '^(?:\d{1,3}.){3}\d{1,3}(?:/\d{1,2})?' "$IP_TMP" | sed -r 's/^0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)$/\1.\2.\3.\4/' >> "$IP_MXGD_TMP"
+rm -f "$IP_TMP"
 
 # sort -nu does not work as expected
 sed -r -e '/^(0\.0\.0\.0|10\.|127\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|192\.168\.|22[4-9]\.|23[0-9]\.)/d' "$IP_MXGD_TMP"|sort -n|sort -mu >| "$IP_MXGD_LIST"
 rm -f "$IP_MXGD_TMP"
+
+# Output IP details if Verbose mode is on
+if [[ ${VERBOSE:-no} == yes ]]; then
+  echo >&2 "DNS A Record for $DNSRECORD returned the following:"
+  echo >&2 "$(<$IP_MXGD_LIST)"
+fi
 
 # TODO: If there are no IPs then we want to bail out at this point because something has gone wrong or dig didn't work. We may want to consider a failsafe and remove
 # the iptable rule
@@ -85,8 +90,3 @@ destroy $IPSET_MXGD_TMP_NAME
 EOF
 
 ipset -file  "$IP_MXGD_RESTORE" restore
-
-if [[ ${VERBOSE:-no} == yes ]]; then
-  echo
-  echo "Number of MX Guarddog IPs found: $(wc -l "$IP_MXGD_LIST" | cut -d' ' -f1)"
-fi
