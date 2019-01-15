@@ -53,15 +53,19 @@ if ! iptables -nvL INPUT|command grep -q "match-set $IPSET_MXGD_NAME"; then
 fi
 
 IP_MXGD_TMP=$(mktemp)
-IP_TMP=$(mktemp)
-dig +short $DNSRECORD >$IP_TMP
 
-# TODO: check error from dig
-command grep -Po '^(?:\d{1,3}.){3}\d{1,3}(?:/\d{1,2})?' "$IP_TMP" | sed -r 's/^0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)\.0*([0-9]+)$/\1.\2.\3.\4/' >> "$IP_MXGD_TMP"
-rm -f "$IP_TMP"
+# look up the A DNS record and filter out only valid IP addresses (this should only return valid IP addresses)
+dig +short $DNSRECORD A | grep -Po '\b(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\b' >> "$IP_MXGD_TMP"
 
-# sort -nu does not work as expected
-sed -r -e '/^(0\.0\.0\.0|10\.|127\.|172\.1[6-9]\.|172\.2[0-9]\.|172\.3[0-1]\.|192\.168\.|22[4-9]\.|23[0-9]\.)/d' "$IP_MXGD_TMP"|sort -n|sort -mu >| "$IP_MXGD_LIST"
+# Make sure we have some IP addresses
+if [ $(wc -l "$IP_MXGD_TMP" | cut -d' ' -f1) == 0 ]; then
+  if [[ ${VERBOSE:-no} == yes ]]; then
+    echo >&2 "Error: DNS A Record for $DNSRECORD returned no IP addresses"
+  fi
+  exit 1
+fi
+
+cp "$IP_MXGD_TMP" "$IP_MXGD_LIST"
 rm -f "$IP_MXGD_TMP"
 
 # Output IP details if Verbose mode is on
@@ -69,9 +73,6 @@ if [[ ${VERBOSE:-no} == yes ]]; then
   echo >&2 "DNS A Record for $DNSRECORD returned the following:"
   echo >&2 "$(<$IP_MXGD_LIST)"
 fi
-
-# TODO: If there are no IPs then we want to bail out at this point because something has gone wrong or dig didn't work. We may want to consider a failsafe and remove
-# the iptable rule
 
 # family = inet for IPv4 only
 cat >| "$IP_MXGD_RESTORE" <<EOF
@@ -81,8 +82,7 @@ EOF
 
 # can be IPv4 including netmask notation
 # IPv6 ? -e "s/^([0-9a-f:./]+).*/add $IPSET_TMP_BLACKLIST_NAME \1/p" \ IPv6
-sed -rn -e '/^#|^$/d' \
-  -e "s/^([0-9./]+).*/add $IPSET_MXGD_TMP_NAME \\1/p" "$IP_MXGD_LIST" >> "$IP_MXGD_RESTORE"
+sed -rn -e "s/^(.+)$/add $IPSET_MXGD_TMP_NAME \\1/p" "$IP_MXGD_LIST" >> "$IP_MXGD_RESTORE"
 
 cat >> "$IP_MXGD_RESTORE" <<EOF
 swap $IPSET_MXGD_NAME $IPSET_MXGD_TMP_NAME
@@ -90,3 +90,5 @@ destroy $IPSET_MXGD_TMP_NAME
 EOF
 
 ipset -file  "$IP_MXGD_RESTORE" restore
+
+exit 0
