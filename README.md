@@ -9,9 +9,9 @@ The ipset command doesn't work under OpenVZ. It works fine on dedicated and full
 - 2019-03-31: Initial public release
 
 ## Quick start for Debian/Ubuntu based installations
-1. ```wget -O /usr/local/sbin/update-mxgd.sh https://code.paulg.it/paulgit/ipset-mxgd/raw/branch/master/update-mxgd.sh```
-2. ```chmod +x /usr/local/sbin/update-mxgd.sh```
-3. ```mkdir -p /etc/ipset-mxgd; wget -O /etc/ipset-mxgd/ipset-mxgd.conf https://code.paulg.it/paulgit/ipset-blacklist/raw/branch/master/ipset-mxgd.conf```
+1. ```wget -O /usr/local/sbin/update-mxgdlist.sh https://code.paulg.it/paulgit/ipset-mxgd/raw/branch/master/update-mxgd.sh```
+2. ```chmod +x /usr/local/sbin/update-mxgdlist.sh```
+3. ```mkdir -p /etc/ipset-mxgd; wget -O /etc/ipset-mxgd/ipset-mxgd.conf https://code.paulg.it/paulgit/ipset-mxgd/raw/branch/master/ipset-mxgd.conf```
 4. Modify ```ipset-mxgd.conf`` according to your needs. The default should suffice.
 5. ```apt-get install ipset```
 6. Create the ipset mxgd and insert it into your iptables input filter (see below). After proper testing, make sure to persist it in your firewall script or similar or the rules will be lost after the next reboot.
@@ -20,7 +20,7 @@ The ipset command doesn't work under OpenVZ. It works fine on dedicated and full
 ## First run, create the list
 to generate the ```/etc/ipset-mxgd/ip-mxgd.restore```
 ```
-/usr/local/sbin/update-mxgd.sh /etc/ipset-mxgd/ipset-mxgd.conf
+/usr/local/sbin/update-mxgdlist.sh /etc/ipset-mxgd/ipset-mxgd.conf
 ```
 
 ## iptables filter rule
